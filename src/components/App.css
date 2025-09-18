@@ -1,0 +1,24 @@
+.App {
+  width: 90%;
+  margin: auto;
+  max-width: 1440px;
+  min-width: 320px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.App.claro {
+  background-color: white;
+  color: black;
+}
+
+.App.oscuro {
+  background-color: #222;
+  color: white;
+}
+
+button {
+  margin: 1rem 0;
+  padding: 0.5rem 1rem;
+}
