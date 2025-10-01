@@ -1,14 +1,89 @@
 import { useEffect, useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, useNavigate } from "react-router-dom";
 import Header from "./Header/Header";
 import Main from "./Main/Main";
 import Footer from "./Footer/Footer";
 import CurrentUserContext from "../contexts/CurrentUserContext";
+import Login from "./Login/Login";
+import Register from "./Register/Register";
+import ProtectedRoute from "./ProtectedRoute/ProtectedRoute";
+import InfoTooltip from "./InfoTooltip/InfoTooltip";
+import { register, authorize, checkToken } from "../utils/auth";
 import { api } from "../utils/api";
-import Register from "./Auth/Register/Register";
-import Login  from "./Auth/Login/Login";
 
 const App = () => {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
+  const [isInfoTooltipOpen, setIsInfoTooltipOpen] = useState(false);
+  const [tooltipStatus, setTooltipStatus] = useState("");
+  const [tooltipMsg, setTooltipMsg] = useState("");
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const jwt = localStorage.getItem("jwt");
+    if (jwt) {
+      checkToken(jwt)
+        .then((res) => {
+          if (res) {
+            setIsLoggedIn(true);
+            setUserEmail(res.data.email);
+            navigate("/", { replace: true });
+          }
+        })
+        .catch((err) => {
+          console.log(err);
+        });
+    }
+  }, [navigate]);
+
+  //registro
+
+  const handleRegister = ({ email, password }) => {
+    register( email, password )
+      .then((res) => {
+        if (res) {
+          setIsInfoTooltipOpen(true);
+          setTooltipStatus("success");
+          setTooltipMsg("Registro exitoso!");
+          navigate("/signin", { replace: true });
+        }
+      })
+      .catch((err) => {
+        setTooltipStatus("error");
+        setTooltipMsg("Registro fallido, intentalo nuevamente");
+        setIsInfoTooltipOpen(true);
+        console.error("Error de registro:", err);
+      });
+  };
+
+  //login
+
+  const handleLogin = ({ email, password }) => {
+    authorize( email, password )
+      .then((data) => {
+        if (data.token) {
+          localStorage.setItem("jwt", data.token);
+          setIsLoggedIn(true);
+          setUserEmail(email);
+          navigate("/", { replace: true });
+        }
+      })
+      .catch((err) => {
+        setTooltipStatus("error");
+        setTooltipMsg("Uy, algo salio mal. Por favor intentalo nuevamente");
+        setIsInfoTooltipOpen(true);
+        console.error("Error de inicio de sesión:", err);
+      });
+  };
+
+  //logout
+  const handleLogout = () => {
+    localStorage.removeItem("jwt");
+    setIsLoggedIn(false);
+    setUserEmail("");
+    navigate("/signin", { replace: true });
+  };
+
   /* Popup */
   const [popup, setPopup] = useState(null);
 
@@ -18,15 +93,19 @@ const App = () => {
 
   function handleClosePopup() {
     setPopup(null);
+    setIsInfoTooltipOpen(false);
   }
 
   /* cards */
   const [cards, setCards] = useState([]);
+
   useEffect(() => {
-    api.getInitialCards().then((res) => {
-      setCards(res);
-    });
-  }, []);
+    if (isLoggedIn) {
+      api.getInitialCards().then((res) => {
+        setCards(res);
+      });
+    }
+  }, [isLoggedIn]);
 
   /* manejador de like */
   async function handleCardLike(cardId) {
@@ -71,15 +150,17 @@ const App = () => {
   const [currentUser, setCurrentUser] = useState({});
 
   useEffect(() => {
-    api
-      .getUserInfo()
-      .then((userData) => {
-        setCurrentUser(userData);
-      })
-      .catch((err) => {
-        console.error(err);
-      });
-  }, []);
+    if (isLoggedIn) {
+      api
+        .getUserInfo()
+        .then((userData) => {
+          setCurrentUser(userData);
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+    }
+  }, [isLoggedIn]);
 
   const handleUpdateUser = async (data) => {
     try {
@@ -103,19 +184,21 @@ const App = () => {
     }
   };
 
-  const [loggedIn, setLoggedIn] = useState(false);
-
   return (
     <div className="page">
       <CurrentUserContext.Provider
         value={{ currentUser, handleUpdateUser, handleUpdateAvatar }}
       >
-        <Header />
+        <Header
+          isLoggedIn={isLoggedIn}
+          userEmail={userEmail}
+          handleLogout={handleLogout}
+        />
         <Routes>
           <Route
             path="/"
             element={
-              loggedIn ? (
+              <ProtectedRoute isLoggedIn={isLoggedIn}>
                 <Main
                   handleOpenPopup={handleOpenPopup}
                   handleClosePopup={handleClosePopup}
@@ -125,17 +208,23 @@ const App = () => {
                   onCardDelete={handleCardDelete}
                   onAddPlaceSubmit={handleAddPlaceSubmit}
                 />
-              ) : (
-                <Navigate to="/sign-in" replace />
-              )
+                <Footer />
+              </ProtectedRoute>
             }
           />
-          <Route path="/signup" element={<Register />} />
-          <Route path="/signin" element={<Login />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/signin" element={<Login onLogin={handleLogin} />} />
+          <Route
+            path="/signup"
+            element={<Register onRegister={handleRegister} />}
+          />
+          <Route path="*" element={<Login onLogin={handleLogin} />} />
         </Routes>
-
-        {loggedIn && <Footer />}
+        <InfoTooltip
+          isOpen={isInfoTooltipOpen}
+          onClose={handleClosePopup}
+          status={tooltipStatus}
+          message={tooltipMsg}
+        />
       </CurrentUserContext.Provider>
     </div>
   );
